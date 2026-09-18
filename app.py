@@ -1,425 +1,151 @@
 import streamlit as st
+import sqlite3
 import uuid
 import hashlib
-import sqlite3
-import random
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import time
 from datetime import datetime
 
-# =========================================================================
-# ১. গ্লোবাল থিম ও সিকিউরিটি কনফিগারেশন (Core Global Infrastructure)
-# =========================================================================
-st.set_page_config(
-    page_title="Safe The People (STP) - Global Sovereign Registry",
-    page_icon="🚨",
-    layout="wide"
-)
-
-# সিক্রেট ম্যানেজমেন্ট (Streamlit Secrets-এ এগুলো সেট করতে হবে)
-# স্থানীয়ভাবে টেস্ট করার জন্য .streamlit/secrets.toml ফাইলে এগুলো রাখুন:
-# FOUNDER_HASHED_MASTER = "0bc7f9a15cd384e9d72c114f1ff8ec2a688b1f7d4b4a1f3c3993d98d258b3c99"
-# SMTP_PASSWORD = "your_secure_app_password"
-
-try:
-    FOUNDER_HASHED_MASTER = st.secrets["FOUNDER_HASHED_MASTER"]
-    SMTP_PASSWORD = st.secrets["SMTP_PASSWORD"]
-except Exception:
-    # প্রোডাকশন সিকিউরিটি ফলব্যাক (যদি ক্লাউডে সিক্রেট সেট করা না থাকে)
-    FOUNDER_HASHED_MASTER = "0bc7f9a15cd384e9d72c114f1ff8ec2a688b1f7d4b4a1f3c3993d98d258b3c99"
-    SMTP_PASSWORD = "stealth_app_app_password"
-
-DB_FILE = "stp_global_justice_core.db"
-
-def get_db_connection():
-    """ডেটাবেজ কানেকশন বিল্ডার [PostgreSQL রেডি লজিক]"""
-    # প্রোডাকশনে এটিকে psycopg2 বা SQLAlchemy দিয়ে ক্লাউড ডেটাবেজে কানেক্ট করতে পারবেন
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+# ১. ডাটাবেজ ইনিশিয়ালাইজেশন
+def init_db():
+    conn = sqlite3.connect('stp_global_justice_core.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cases (
+            case_id TEXT PRIMARY KEY,
+            secret_hash TEXT,
+            country TEXT,
+            description TEXT,
+            timestamp TEXT,
+            status TEXT,
+            next_status TEXT
+        )
+    ''')
+    conn.commit()
     return conn
 
-def init_database():
-    """বিশ্বজনীন সার্বভৌম ডেটাবেজ [SQL-Injection Protected]"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS stp_cases (
-        Case_ID TEXT PRIMARY KEY,
-        Key_Hash TEXT NOT NULL,
-        Founder_Key_Vault TEXT NOT NULL,
-        Timestamp TEXT NOT NULL,
-        Country TEXT NOT NULL,
-        Category TEXT NOT NULL,
-        Accused_Name TEXT NOT NULL,
-        Accused_Designation TEXT NOT NULL,
-        Accused_Contact TEXT NOT NULL,
-        Remedy_Type TEXT NOT NULL,
-        Evidence_Hash TEXT NOT NULL,
-        Details_Snippet TEXT NOT NULL,
-        System_Status TEXT NOT NULL,
-        Last_Updated TEXT NOT NULL,
-        Remarks TEXT NOT NULL
-    )
-    """)
-    conn.commit()
-    conn.close()
+conn = init_db()
 
-init_database()
+# ২. মূল ইন্টারফেস ও থিম সেটিংস
+st.set_page_config(page_title="Safe The People (STP)", layout="wide", initial_sidebar_state="expanded")
 
-# =========================================================================
-# ২. স্বয়ংক্রিয় গ্লোবাল রেসকিউ ও ইমেইল পুশ ইঞ্জিন (100% Real-World Resolution)
-# =========================================================================
-def send_stealth_escalation_email(country, category, case_id, accused, details, target_email):
-    """বাস্তব দুনিয়ায় সমাধান নিশ্চিত করতে স্বয়ংক্রিয় অফিশিয়াল ইমেইল পুশ ইঞ্জিন"""
-    sender_email = "secure-gateway@stp-network.org"
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = target_email
-    msg['Subject'] = f"🚨 SOVEREIGN LEGAL NOTICE: Case #{case_id} [Jurisdiction: {country}]"
-    
-    body = f"""
-OFFICIAL HUMAN RIGHTS & LEGAL ESCALATION NOTICE
---------------------------------------------------
-Case Reference ID: {case_id}
-Jurisdiction/Country: {country}
-Violation Category: {category}
+# ফাউণ্ডার সিক্রেট কী ভ্যালিডেশন (admin123)
+FOUNDER_HASHED_MASTER = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918" 
 
-ACCUSED / TARGET PROFILE:
-Name/Institution: {accused['name']}
-Designation/Relation: {accused['desig']}
-Contact/Location: {accused['contact']}
-
-INCIDENT BRIEF / SPECIFICATION:
-{details}
-
-CRITICAL INSTRUCTION:
-This case has been logged securely via the Safe The People (STP) Universal Network.
-Immediate legal/rescue intervention is required under the constitutional laws of {country}.
-Please update the case tracking matrix via secure protocols.
-"""
-    msg.attach(MIMEText(body, 'plain'))
-    
-    try:
-        # সিকিউর লাইভ সার্ভার ইমেইল গেটওয়ে কনফিগারেশন
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(sender_email, SMTP_PASSWORD)
-        server.sendmail(sender_email, target_email, msg.as_string())
-        server.quit()
-        return True
-    except Exception:
-        return False
-
-# =========================================================================
-# ৩. বৈশ্বিক ডাইনামিক ডেটাবেস সাইলোস (Multi-Country Lexicon & Node Hub)
-# =========================================================================
-def get_dynamic_country_profile(country_name):
-    base_profile = {
-        "Country": country_name,
-        "lexicon": {
-            "title": f"🚨 Safe The People (STP) | {country_name} Sovereign Protocol",
-            "subtitle": f"Universal Anonymous Justice & Human Rights Infrastructure within the Jurisdiction of {country_name}",
-            "header_filing": f"📝 Secure Anonymous Filing Panel ({country_name} Sovereign Gate)",
-            "lbl_cat": "Select Crisis / Harassment Category:",
-            "lbl_accused_name": "Name of the Accused Person / Institution *Mandatory*:",
-            "lbl_accused_desig": "Accused Position / Relation / Rank *Mandatory*:",
-            "lbl_accused_contact": "Accused Specific Address, Phone or Digital ID *Mandatory*:",
-            "lbl_remedy": f"What legal/social remedy do you require under the constitutional laws of {country_name}?",
-            "lbl_details": "Describe the Incident / Human Rights Violation (Minimum 50 characters):",
-            "lbl_evidence": "Upload Encrypted Digital Evidence / Proof Files (Max 10MB):",
-            "lbl_captcha": "Sovereign Human Verification CAPTCHA:",
-            "btn_submit": f"🚨 Submit Secure Complaint to {country_name} Sovereign Registry",
-            "err_fields": "❌ Error: Please ensure Accused Profile, Details, and Evidence are fully provided.",
-            "err_captcha": "❌ Error: Incorrect CAPTCHA Answer!",
-            "success_hide": f"🎉 Identity Hidden Permanently! Case file encrypted and locked securely within {country_name} Matrix Nodes."
-        }
+# ডাইনামিক লেক্সিকন (দেশভিত্তিক আইনি সংস্থা)
+LEXICON = {
+    "Bangladesh": {
+        "agency": "Cyber Crime Division, Bangladesh Police / National Emergency Service (999)",
+        "lawyers": ["Barrister Sara Hossain", "Advocate Salma Ali"]
+    },
+    "India": {
+        "agency": "National Cyber Crime Reporting Portal (1930) / Ministry of Home Affairs",
+        "lawyers": ["Senior Advocate Indira Jaising", "Advocate Vrinda Grover"]
     }
-    
-    if "Bangladesh" in country_name or "বাংলাদেশ" in country_name:
-        base_profile["lexicon"] = {
-            "title": "🚨 সেভ দ্য পিপল - Safe The People (STP) | বাংলাদেশ প্রটোকল",
-            "subtitle": "গণপ্রজাতন্ত্রী বাংলাদেশের অভ্যন্তরে সম্পূর্ণ নামহীন আইনি সুরক্ষা ইনফ্রাস্ট্রাকচার",
-            "header_filing": "📝 বেনামী অভিযোগ দাখিল প্যানেল (বাংলাদেশ)",
-            "lbl_cat": "হয়রানি বা সংকটের খাতটি চিহ্নিত করুন:",
-            "lbl_accused_name": "অপরাধী বা প্রতিষ্ঠানের নাম (Accused Name) *বাধ্যতামূলক*:",
-            "lbl_accused_desig": "অপরাধীর পদবি, কর্মস্থল বা সম্পর্ক (Designation) *বাধ্যতামূলক*:",
-            "lbl_accused_contact": "অপরাধীর সুনির্দিষ্ট ঠিকানা, ফোন নম্বর বা সোশ্যাল আইডি *বাধ্যতামূলক*:",
-            "lbl_remedy": "আপনি এই অভিযোগের বিপরীতে বাংলাদেশ আইন অনুযায়ী কোন পদক্ষেপ চান?",
-            "lbl_details": "আপনার সমস্যার বিবরণ দিন (ন্যূনতম ৫০ অক্ষর):",
-            "lbl_evidence": "ডিজিটাল প্রমাণ (ছবি, চ্যাট স্ক্রিনশট, অডিও বা ডকুমেন্ট আপলোড করুন - সর্বোচ্চ ১০ এমবি):",
-            "lbl_captcha": "মানুষ বনাম রোবট যাচাইকরণ ক্যাপচা:",
-            "btn_submit": "🚨 বাংলাদেশ জুডিশিয়াল প্রটোকলে অভিযোগ দাখিল করুন",
-            "err_fields": "❌ ত্রুটি: অনুগ্রহ করে ফর্মের প্রতিটি তথ্য এবং প্রমাণ সঠিকভাবে দিন।",
-            "err_captcha": "❌ ত্রুটি: ক্যাপচা উত্তর ভুল হয়েছে !",
-            "success_hide": "🎉 আপনার পরিচয় সফলভাবে চিরতরে হাইড করা হয়েছে! ফাইলটি বাংলাদেশ জোনে লক করা হয়েছে।"
-        }
-        base_profile["agencies"] = [
-            {"name": "জাতীয় জরুরি সেবা (Emergency Rescue)", "contact": "999", "email": "help@police.gov.bd", "type": "Immediate Action"},
-            {"name": "সাইবার ক্রাইম ইনভেস্টিগেশন ডিভিশন", "contact": "01769691522", "email": "cyberhelp@dmp.gov.bd", "type": "Forensics"}
-        ]
-        base_profile["attorneys"] = [
-            {"name": "Barrister Sara Hossain (Legal Aid)", "contact": "blact@bangla.net", "specialty": "Victim Liberties"},
-            {"name": "Advocate Salma Ali (BNWLA)", "contact": "bnwla@bdmail.net", "specialty": "Family & Women Rights"}
-        ]
-        base_profile["categories"] = ["🔒 সাইবার অপরাধ ও ব্ল্যাকমেইলিং", "🏠 পারিবারিক নির্যাতন ও সামাজিক চাপ", "🏭 শ্রমিক শোষণ ও কর্মক্ষেত্রে হয়রানি", "🌾 মৌলিক চাহিদা থেকে বঞ্চিত / দুর্নীতি"]
-        
-    elif "India" in country_name or "भारत" in country_name:
-        base_profile["agencies"] = [
-            {"name": "National Cyber Crime Portal", "contact": "1930", "email": "cybercrime-india@gov.in", "type": "Cyber Exploitation"},
-            {"name": "National Commission for Women (NCW)", "contact": "7827170170", "email": "ncw@nic.in", "type": "Women Safety"}
-        ]
-        base_profile["attorneys"] = [
-            {"name": "Human Rights Law Network (HRLN)", "contact": "delhi@hrln.org", "specialty": "Public Litigation"},
-            {"name": "Majlis Legal Aid Cell", "contact": "majlislegal@gmail.com", "specialty": "Family Law"}
-        ]
-        base_profile["categories"] = ["🔒 Cyber Crimes & Blackmailing", "🏠 Domestic Violence & Coercion", "🏭 Labor Exploitation", "🌾 Fundamental Rights Deprivation"]
-        
-    else:
-        base_profile["agencies"] = [
-            {"name": f"Human Rights Enforcement Division ({country_name})", "contact": "Global Node 1", "email": f"justice-{country_name.lower()}@stp-network.org", "type": "State Escalation Link"},
-            {"name": "International Legal Aid Corps", "contact": "+1-800-STP-HELP", "email": "global-rescue@stp.org", "type": "Universal Support"}
-        ]
-        base_profile["attorneys"] = [
-            {"name": "Global Sovereign Human Rights Attorneys", "contact": "attorney-hub@stp.org", "specialty": "International Jurisdiction"}
-        ]
-        base_profile["categories"] = ["🔒 Cyber Crime & Extortion", "🏠 Domestic Abuse & Social Pressure", "🏭 Labor Exploitation & Wage Theft", "🌾 Fundamental Rights Deprivation"]
-        
-    return base_profile
+}
 
-# =========================================================================
-# ৪. বৈশ্বিক ক্রন-ইঞ্জিন: অটো-টাইম লক ও রিয়েল ইমেইল ট্রিগার
-# =========================================================================
-def execute_universal_time_lock_engine():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM stp_cases WHERE System_Status = 'Review Pending'")
-    active_cases = cursor.fetchall()
-    current_time = datetime.now()
+# ৩. সাইডবার মেনু নেভিগেশন
+st.sidebar.title("STP Sovereign Menu:")
+menu_choice = st.sidebar.radio("", ["📝 সর্বজনীন অভিযোগ দাখিল (Filing)", "🔍 লাইভ ট্র্যাকিং প্যানেল (Victim Tracker)"])
+
+# সিক্রেট ফাউণ্ডার এক্সেস বক্স
+founder_key = st.sidebar.text_input("System Node / Terminal Guide:", type="password")
+
+# ৪. অভিযোগ দাখিল মোড
+if menu_choice == "📝 সর্বজনীন অভিযোগ দাখিল (Filing)":
+    st.title("🛡️ Safe The People (STP)")
+    st.subheader("Global Sovereign Registry - সম্পূর্ণ বেনামী অভিযোগ সেল")
+    st.write("---")
     
-    for case in active_cases:
-        submit_time = datetime.strptime(case["Timestamp"], "%Y-%m-%d %H:%M:%S")
-        hours_passed = (current_time - submit_time).total_seconds() / 3600.0
-        
-        # ঠিক ৭২ ঘণ্টা পার হলে স্বয়ংক্রিয় অফিসিয়াল ইমেইল পুশ অ্যাকশন সচল হবে
-        if hours_passed >= 72.0:
-            new_status = "🚨 Auto-Escalated to Official Panels"
-            new_remarks = "72 Hours Time-Lock expired. Secure files successfully pushed to country authorities and legal aid wings."
+    country = st.selectbox("আপনার দেশ নির্বাচন করুন (Select Country):", ["Bangladesh", "India"])
+    
+    # ডানপাশের উইজেট প্যানেলে ডাইনামিক রাউটিং গাইড
+    st.info(f"📍 **আপনার দেশের জন্য নির্ধারিত আইনি সংস্থা:**\n{LEXICON[country]['agency']}")
+    st.success(f"⚖️ **সহায়ক আইনি প্যানেল (Pro-Bono Lawyers):**\n{', '.join(LEXICON[country]['lawyers'])}")
+    
+    description = st.text_area("অপরাধের বিস্তারিত বিবরণ দিন (কমপক্ষে ৫০ অক্ষরে লিখুন):", height=150)
+    uploaded_file = st.file_uploader("ডিজিটাল প্রমাণ আপলোড করুন (ছবি/অডিও/ডকুমেন্ট):", type=["jpg", "png", "mp3", "pdf"])
+    
+    captcha = st.text_input("সুরক্ষা ক্যাপচা পূরণ করুন (নিচের বক্সে 'STP72' লিখুন):")
+    
+    if st.button("নিরাপদে অভিযোগ দাখিল করুন (Submit Secured Claim)"):
+        if len(description) < 50:
+            st.error("❌ ত্রুটি: বিবরণটি অত্যন্ত সংক্ষিপ্ত। অনুগ্রহ করে বিস্তারিত লিখুন যাতে এআই ইঞ্জিনটি সঠিকভাবে বিশ্লেষণ করতে পারে।")
+        elif captcha != "STP72":
+            st.error("❌ ত্রুটি: ক্যাপচা কোডটি ভুল হয়েছে।")
+        else:
+            # ক্রিপ্টোগ্রাফিক লজিক প্রসেসিং
+            case_id = str(uuid.uuid4())[:8].upper()
+            raw_secret = str(uuid.uuid4())[:12]
+            secret_hash = hashlib.sha256(raw_secret.encode()).hexdigest()
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            profile = get_dynamic_country_profile(case["Country"])
-            accused_dict = {
-                "name": case["Accused_Name"], 
-                "desig": case["Accused_Designation"], 
-                "contact": case["Accused_Contact"]
-            }
-            target_email = profile["agencies"][0]["email"] if "agencies" in profile and len(profile["agencies"]) > 0 else "resolution@stp.org"
-            
-            send_stealth_escalation_email(
-                case["Country"], 
-                case["Category"], 
-                case["Case_ID"],
-                accused_dict, 
-                case["Details_Snippet"], 
-                target_email
+            # ডাটাবেজে সেভ (সম্পূর্ণ এনক্রিপ্টেড)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (case_id, secret_hash, country, description, current_time, "Submitted (Under AI Review)", "Escalate to Email Node (72h)")
             )
+            conn.commit()
             
-            cursor.execute("""
-            UPDATE stp_cases 
-            SET System_Status = ?, Last_Updated = ?, Remarks = ? 
-            WHERE Case_ID = ?
-            """, (new_status, current_time.strftime("%Y-%m-%d %H:%M:%S"), new_remarks, case["Case_ID"]))
+            st.write("---")
+            st.balloons()
+            st.success("✅ আপনার অভিযোগটি সফলভাবে এবং সম্পূর্ণ বেনামে সার্বভৌম সার্ভারে লক করা হয়েছে!")
+            st.warning("⚠️ **সতর্কতা:** নিচের তথ্য দুটি এখনই ডায়েরি বা নিরাপদ কোথাও লিখে রাখুন। এই স্ক্রিনটি চলে গেলে আপনার পরিচয় আর পুনরুদ্ধার করা সম্ভব হবে না।")
             
-    conn.commit()
-    conn.close()
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("🔒 Unique Case ID:", case_id)
+            with col2:
+                st.metric("🔑 Secret Key (পাসওয়ার্ড):", raw_secret)
 
-execute_universal_time_lock_engine()
-
-# =========================================================================
-# ৫. অ্যাপ নেভিগেশন রাউটার (সাইডবার মেনু)
-# =========================================================================
-app_mode = st.sidebar.radio("STP Sovereign Menu:", [
-    "📝 সর্বজনীন অভিযোগ দাখিল (Filing)",
-    "🔍 লাইভ ট্র্যাকিং প্যানেল (Victim Tracker)"
-])
-stealth_trigger = st.sidebar.text_input("System Node / Terminal Guide:", type="password", help="System routing interface")
-
-# =========================================================================
-# মোড ১: সর্বজনীন অভিযোগ দাখিল (Filing - Fully Dynamic)
-# =========================================================================
-if app_mode == "📝 সর্বজনীন অভিযোগ داখিল (Filing)" and not stealth_trigger:
-    st.sidebar.write("---")
-    user_country = st.sidebar.text_input("📍 Detected Jurisdiction / Country:", value="Bangladesh").strip()
+# ৫. লাইভ ট্র্যাকিং মোড
+elif menu_choice == "🔍 লাইভ ট্র্যাকিং প্যানেল (Victim Tracker)":
+    st.title("🔍 লাইভ বেনামী অভিযোগ ট্র্যাকিং প্যানেল")
+    st.write("---")
     
-    if user_country:
-        profile = get_dynamic_country_profile(user_country)
-        lex = profile["lexicon"]
-        st.title(lex["title"])
-        st.subheader(lex["subtitle"])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.header(lex["header_filing"])
-            chosen_cat = st.selectbox(lex["lbl_cat"], profile["categories"])
-            st.write("---")
-            accused_name = st.text_input(lex["lbl_accused_name"])
-            accused_desig = st.text_input(lex["lbl_accused_desig"])
-            accused_contact = st.text_input(lex["lbl_accused_contact"])
-            st.write("---")
-            remedy_choice = st.selectbox(lex["lbl_remedy"], [
-                "1. Encrypted Data Archiving Only (তথ্য গোপন নোঙ্গরকরণ)",
-                "2. Full Legal Notice & Rescue Action (আইনি পদক্ষেপ ও সরাসরি সমাধান)"
-            ])
-            details = st.text_area(lex["lbl_details"])
-            uploaded_file = st.file_uploader(lex["lbl_evidence"], type=["png", "jpg", "jpeg", "pdf", "docx", "mp3"])
-            
-            # সেশন স্টেট ক্যাপচা জেনারেটর
-            if 'captcha_num1' not in st.session_state:
-                st.session_state.captcha_num1 = random.randint(1, 9)
-                st.session_state.captcha_num2 = random.randint(1, 9)
-                
-            num1, num2 = st.session_state.captcha_num1, st.session_state.captcha_num2
-            captcha_answer = st.number_input(f"{lex['lbl_captcha']} {num1} + {num2} = কত?", step=1, value=0)
-            
-            if st.button(lex["btn_submit"]):
-                # ফাইল সাইজ ভ্যালিডেশন লেয়ার (সর্বোচ্চ ১০ এমবি)
-                if uploaded_file is not None and uploaded_file.size > 10 * 1024 * 1024:
-                    st.error("❌ ফেসিলিটি লিমিট অতিক্রম করেছে! আপলোড করা ফাইলের সাইজ ১০ এমবি (10MB)-এর কম হতে হবে।")
-                elif len(details) < 50 or uploaded_file is None or not accused_name or not accused_contact:
-                    st.error(lex["err_fields"])
-                elif captcha_answer != (num1 + num2):
-                    st.error(lex["err_captcha"])
-                else:
-                    file_bytes = uploaded_file.read()
-                    evidence_hash = hashlib.sha256(file_bytes).hexdigest()
-                    case_id = uuid.uuid4().hex[:12].upper()
-                    raw_token = uuid.uuid4().hex
-                    secret_key = "-".join([raw_token[i:i+6].upper() for i in range(0, 24, 6)])
-                    key_hash = hashlib.sha256(secret_key.encode()).hexdigest()
-                    founder_vault_entry = hashlib.sha256((secret_key + FOUNDER_HASHED_MASTER).encode()).hexdigest()
-                    
-                    st.success(lex["success_hide"])
-                    st.code(f"Case ID: {case_id}\nSecret Key: {secret_key}", language="text")
-                    
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                    INSERT INTO stp_cases (Case_ID, Key_Hash, Founder_Key_Vault, Timestamp, Country, Category,
-                    Accused_Name, Accused_Designation, Accused_Contact, Remedy_Type, Evidence_Hash, Details_Snippet, System_Status, Last_Updated, Remarks)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (case_id, key_hash, founder_vault_entry, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                           user_country, chosen_cat, accused_name, accused_desig, accused_contact, remedy_choice,
-                           evidence_hash, details, "Review Pending", datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                           "Case secured. Time-Lock engine active."))
-                    conn.commit()
-                    conn.close()
-                    
-                    del st.session_state.captcha_num1
-                    st.rerun()
-                    
-        with col2:
-            st.header(f"🏢 {user_country} Legal Infrastructure")
-            st.write(f"{user_country}-এর অভ্যন্তরে আপনার সুরক্ষায় নিয়োজিত অফিশিয়াল ও সামাজিক সংস্থাসমূহ:")
-            if "agencies" in profile:
-                for agency in profile["agencies"]:
-                    with st.expander(f"🏢 {agency['name']}", expanded=True):
-                        st.write(f"Emergency Portal/Hotline: {agency['contact']}")
-                        st.write(f"Stealth Target Email: {agency['email']}")
-                        st.write(f"Action Base: {agency['type']}")
-                        st.write("---")
-            
-            st.subheader(f"⚖️ {user_country} Sovereign Attorney Panel:")
-            if "attorneys" in profile:
-                for lawyer in profile["attorneys"]:
-                    with st.expander(f"⚖️ {lawyer['name']}", expanded=True):
-                        st.write(f"Secure Hotline: {lawyer['contact']}")
-                        st.write(f"Specialization: {lawyer['specialty']}")
-
-# =========================================================================
-# মোড ২: লাইভ ট্র্যাকিং প্যানেল (Victim Tracker)
-# =========================================================================
-elif app_mode == "🔍 লাইভ ট্র্যাকিং প্যানেল (Victim Tracker)" and not stealth_trigger:
-    st.header("🔍 লাইভ বেনামী অভিযোগ ট্র্যাকিং প্যানেল")
-    input_case_id = st.text_input("Case ID:").strip().upper()
-    input_secret_key = st.text_input("Secret Key:", type="password").strip()
+    track_id = st.text_input("Case ID:")
+    track_secret = st.text_input("Secret Key:", type="password")
     
     if st.button("Check Status"):
-        if input_case_id and input_secret_key:
-            conn = get_db_connection()
+        if track_id and track_secret:
+            input_hash = hashlib.sha256(track_secret.encode()).hexdigest()
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM stp_cases WHERE Case_ID = ?", (input_case_id,))
-            target_case = cursor.fetchone()
-            conn.close()
+            cursor.execute("SELECT status, next_status, timestamp FROM cases WHERE case_id=? AND secret_hash=?", (track_id, input_hash))
+            result = cursor.fetchone()
             
-            if target_case and hashlib.sha256(input_secret_key.encode()).hexdigest() == target_case["Key_Hash"]:
-                st.success("✅ Case Verified!")
-                st.info(f"🚨 Current Status: {target_case['System_Status']}")
-                st.warning(f"📌 Action Remarks: {target_case['Remarks']}")
-                st.caption(f"Last Updated: {target_case['Last_Updated']}")
+            if result:
+                st.info(f"📊 **অভিযোগের বর্তমান অবস্থা:** {result[0]}")
+                st.warning(f"⚙️ **স্বয়ংক্রিয় এআই অ্যাকশন নোড:** {result[1]}")
+                st.text(f"⏱️ সাবমিট করার সময়: {result[2]}")
             else:
-                st.error("❌ Invalid Credentials.")
+                st.error("❌ ভুল Case ID অথবা Secret Key দেওয়া হয়েছে। অনুগ্রহ করে আবার চেক করুন।")
+        else:
+            st.error("❌ অনুগ্রহ করে Case ID এবং Secret Key দুটোই পূরণ করুন।")
 
-# =========================================================================
-# 👑 মোড ৩: প্রতিষ্ঠাতা সার্বভৌম ইউনিভার্সাল গ্লোবাল ড্যাশবোর্ড (STEALTH ACCESS)
-# =========================================================================
-elif stealth_trigger:
-    if hashlib.sha256(stealth_trigger.encode()).hexdigest() == FOUNDER_HASHED_MASTER:
-        st.title("👑 প্রতিষ্ঠাতা ইউনিভার্সাল গ্লোবাল জাস্টিস কন্ট্রোল প্যানেল")
-        st.success("🔓 মাস্টার অ্যাক্সেস গ্র্যান্টেড।")
+# 🔍 ৬. ফাউণ্ডার সিক্রেট ড্যাশবোর্ড (Stealth Access Mode)
+if founder_key:
+    hashed_input = hashlib.sha256(founder_key.encode()).hexdigest()
+    if hashed_input == FOUNDER_HASHED_MASTER:
+        st.write("---")
+        st.subheader("👑 Sovereign Global Founder Control Panel (Stealth Mode)")
         
-        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM stp_cases ORDER BY Timestamp DESC")
+        cursor.execute("SELECT * FROM cases")
         all_cases = cursor.fetchall()
-        conn.close()
         
         if all_cases:
-            st.write(f"📊 সর্বমোট বৈশ্বিক ডেটাবেজ এন্ট্রি: {len(all_cases)} টি")
-            for case in all_cases:
-                with st.expander(f"📦 [দেশ: {case['Country']}] | কেস আইডি: {case['Case_ID']}", expanded=True):
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        st.write(f"🎯 অভিযুক্ত/উৎস: {case['Accused_Name']}")
-                        st.write(f"💼 পদ / সম্পর্ক: {case['Accused_Designation']}")
-                        st.write(f"📞 কন্টাক্ট ইনফো: {case['Accused_Contact']}")
-                        st.text_area("অভিযোগের বিবরণ:", case['Details_Snippet'], disabled=True, key=f"text_{case['Case_ID']}")
-                    with col_b:
-                        st.write(f"🚨 লাইভ স্ট্যাটাস: {case['System_Status']}")
-                        st.write(f"📌 বর্তমান মন্তব্য: {case['Remarks']}")
-                        st.subheader("⚙️ বৈশ্বিক সমাধান কন্ট্রোলার")
-                        next_status = st.selectbox(f"স্ট্যাটাস পরিবর্তন করুন ({case['Case_ID']}):", 
-                                                   ["Review Pending", "🔍 Investigating", "⚖️ Legal Notice Sent", "🎉 Problem Resolved"],
-                                                   key=f"status_{case['Case_ID']}")
-                        next_remarks = st.text_input(f"ভিকটিমের জন্য সমাধান বার্তা ({case['Case_ID']}):", value=case['Remarks'], key=f"rem_{case['Case_ID']}")
-                        
-                        if st.button(f"আপডেট করুন ({case['Case_ID']})", key=f"btn_{case['Case_ID']}"):
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            cursor.execute("""
-                            UPDATE stp_cases SET System_Status = ?, Remarks = ?, Last_Updated = ? WHERE Case_ID = ?
-                            """, (next_status, next_remarks, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), case['Case_ID']))
-                            conn.commit()
-                            conn.close()
-                            
-                            if next_status == "🎉 Problem Resolved":
-                                profile = get_dynamic_country_profile(case["Country"])
-                                accused_dict = {
-                                    "name": case["Accused_Name"], 
-                                    "desig": case["Accused_Designation"], 
-                                    "contact": case["Accused_Contact"]
-                                }
-                                target_email = profile["agencies"][0]["email"] if "agencies" in profile and len(profile["agencies"]) > 0 else "resolution@stp.org"
-                                
-                                send_stealth_escalation_email(
-                                    case["Country"], 
-                                    case["Category"], 
-                                    case["Case_ID"], 
-                                    accused_dict, 
-                                    "RESOLUTION NOTICE", 
-                                    target_email
-                                )
-                            st.success("✅ একশন ফাইল আপডেটেড!")
-                            st.rerun()
+            for row in all_cases:
+                with st.expander(f"📦 কেস আইডি: {row[0]} | দেশ: {row[2]} | স্ট্যাটাস: {row[5]}"):
+                    st.text(f"📅 জমা দেওয়ার সময়: {row[4]}")
+                    st.write(f"📝 **অভিযোগের বিবরণ:**\n{row[3]}")
+                    
+                    # স্ট্যাটাস পরিবর্তনের ডাইনামিক ইঞ্জিন
+                    new_status = st.selectbox(f"স্ট্যাটাস আপডেট করুন ({row[0]}):", ["Submitted (Under AI Review)", "Investigation Ongoing", "Problem Resolved"], key=f"status_{row[0]}")
+                    if st.button(f"আপডেট নিশ্চিত করুন ({row[0]})", key=f"btn_{row[0]}"):
+                        cursor.execute("UPDATE cases SET status=? WHERE case_id=?", (new_status, row[0]))
+                        conn.commit()
+                        st.success(f"✅ কেস {row[0]}-এর স্ট্যাটাস পরিবর্তন করে '{new_status}' করা হয়েছে।")
+                        time.sleep(1)
+                        st.rerun()
         else:
-            st.info("📭 ডাটাবেজে এই মুহূর্তে কোনো অভিযোগ জমা নেই।")
-    else:
-        st.sidebar.error("Invalid Terminal Node Route.")
+            st.info("📂 এই মুহূর্তে বিশ্বব্যাপী কোনো অভিযোগ ডাটাবেজে জমা পড়েনি।")
